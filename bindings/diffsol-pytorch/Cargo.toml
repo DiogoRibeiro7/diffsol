@@ -1,0 +1,23 @@
+[package]
+name = "diffsol-pytorch"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+name = "diffsol_pytorch"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["cranelift"]
+cranelift = ["diffsol/diffsl-cranelift"]
+llvm = ["diffsol/diffsl-llvm"]
+python = ["pyo3"]
+
+[dependencies]
+diffsol = { path = "../../diffsol", features = ["nalgebra"] }
+thiserror = "1.0"
+parking_lot = "0.12"
+pyo3 = { version = "0.25", features = ["extension-module"], optional = true }

@@ -1,0 +1,33 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0", "torch>=1.11"]
+build-backend = "maturin"
+
+[project]
+name = "diffsol-pytorch"
+version = "0.1.0"
+description = "PyTorch bindings for the diffsol ODE solver."
+requires-python = ">=3.9"
+authors = [
+  { name = "Diffsol Contributors" }
+]
+readme = "README.md"
+license = { text = "MIT" }
+classifiers = [
+  "Programming Language :: Python",
+  "Programming Language :: Rust",
+  "Framework :: PyTorch",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "torch>=1.11"
+]
+
+[project.optional-dependencies]
+test = ["pytest", "numpy"]
+docs = ["sphinx", "myst-nb", "sphinx-autodoc-typehints"]
+
+[tool.maturin]
+features = ["python"]
+module-name = "diffsol_pytorch.diffsol_pytorch"
+strip = true

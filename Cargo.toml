@@ -1,7 +1,7 @@
 [workspace]
-members = ["diffsol", "examples/*"]
+members = ["diffsol", "examples/*", "bindings/*"]
 default-members = ["diffsol"]
-exclude = ["book"]
+exclude = ["book", "examples/integration", "examples/scientific"]
 resolver = "2"
 
 [workspace.package]
