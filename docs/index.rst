@@ -4,9 +4,14 @@ diffsol-pytorch
 .. toctree::
    :maxdepth: 2
 
+   user-guide
    getting-started
+   scientific-examples
    api
    benchmarks
+   ecosystem
+   community
+   release-strategy
 
 .. note::
 

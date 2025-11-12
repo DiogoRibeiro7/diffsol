@@ -1,13 +1,21 @@
 import math
 
+import pytest
 import torch
 
 import diffsol_pytorch as dsp
 
+from conftest import AD_SKIP_REASON, HAS_AUTODIFF
+
 CODE = """
-state x
-param k
-der(x) = -k * x
+in = [k]
+k { 0.4 }
+u {
+    x = 1.0,
+}
+F {
+    -k * x,
+}
 """
 
 
@@ -25,14 +33,16 @@ def test_solve_dense_matches_analytic():
     assert torch.allclose(result, expected, atol=1e-6)
 
 
+@pytest.mark.skipif(not HAS_AUTODIFF, reason=AD_SKIP_REASON)
 def test_reverse_mode_matches_closed_form_gradient():
-    module = dsp.DiffsolModule(CODE)
     params = torch.tensor([0.7], dtype=torch.float64)
     times = torch.linspace(0.0, 1.0, 6, dtype=torch.float64)
     grad_output = torch.zeros((1, times.numel()), dtype=torch.float64)
     grad_output[0, -1] = 1.0  # sensitivity with respect to final value
 
-    out = dsp.reverse_mode(CODE, params.tolist(), times.tolist(), grad_output.flatten().tolist())
+    out = dsp.reverse_mode(
+        CODE, params.tolist(), times.tolist(), grad_output.flatten().tolist()
+    )
     grad_params = torch.tensor(out[:-1], dtype=torch.float64)
     grad_init = torch.tensor(out[-1:], dtype=torch.float64)
     t_final = times[-1]

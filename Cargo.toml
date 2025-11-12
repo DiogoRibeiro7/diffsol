@@ -31,3 +31,6 @@ ort-sys = { version = "=2.0.0-rc.9", default-features = false }
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+diffsl = { path = "vendor/diffsl" }

@@ -1,0 +1,27 @@
+{% set name = "diffsol-pytorch" %}
+{% set version = environ.get("DIFFSOL_VERSION", "0.1.0") %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  path: ../../
+
+build:
+  noarch: python
+  script: "{{ PYTHON }} -m pip install --no-deps --no-build-isolation ."
+
+requirements:
+  host:
+    - python >=3.9
+    - pip
+    - maturin
+  run:
+    - python >=3.9
+    - pytorch >=1.11
+
+about:
+  home: https://github.com/martinjrobins/diffsol
+  summary: PyTorch bindings for the diffsol ODE/DAE solver.
+  license: MIT

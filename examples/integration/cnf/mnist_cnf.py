@@ -4,6 +4,7 @@ Falls back gracefully if torchvision/torchdiffeq are unavailable.
 """
 
 import argparse
+import math
 import time
 from typing import Optional
 
@@ -25,11 +26,16 @@ except ImportError:
 import diffsol_pytorch as dsp
 
 CNF_CODE = """
-state z
-param a
-param b
-param c
-der(z) = a * z^3 + b * z + c
+in = [a, b, c]
+a { 0.1 }
+b { 0.1 }
+c { 0.0 }
+u {
+    z = 0.0,
+}
+F {
+    a * z * z * z + b * z + c,
+}
 """
 
 
@@ -51,13 +57,15 @@ class DiffsolCNF(nn.Module):
         self.times = torch.linspace(0.0, 1.0, 51).tolist()
 
     def forward(self, z0: torch.Tensor) -> torch.Tensor:
-        nout, nt, flat = self.module.solve_dense(self.params.detach().tolist(), self.times)
+        nout, nt, flat = self.module.solve_dense(
+            self.params.detach().tolist(), self.times
+        )
         traj = torch.tensor(flat, dtype=torch.float64).reshape(nout, nt)
         return traj[-1]
 
     def log_prob(self, z0: torch.Tensor) -> torch.Tensor:
         zT = self.forward(z0)
-        return -0.5 * (zT ** 2).mean()
+        return -0.5 * (zT**2).mean()
 
     def backward(self, grad_scalar: float):
         grad_out = [grad_scalar] * len(self.times)
@@ -93,9 +101,9 @@ def train_diffsol(loader, steps: int, device: torch.device):
 def train_torchdiffeq(loader, steps: int, device: torch.device):
     if torch_odeint is None:
         return float("nan")
-    func = nn.Sequential(
-        nn.Linear(1, 16), nn.Tanh(), nn.Linear(16, 1)
-    ).to(device, dtype=torch.float64)
+    func = nn.Sequential(nn.Linear(1, 16), nn.Tanh(), nn.Linear(16, 1)).to(
+        device, dtype=torch.float64
+    )
     optimizer = optim.Adam(func.parameters(), lr=1e-2)
     times = torch.linspace(0.0, 1.0, 51, device=device, dtype=torch.float64)
     data_iter = iter(loader)

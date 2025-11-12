@@ -31,7 +31,7 @@ def run():
     y1 = -l1 * np.cos(theta1)
     y2 = y1 - l2 * np.cos(theta2)
     v1 = l1 * omega1
-    v2 = np.sqrt(v1**2 + (l2 * omega2)**2)
+    v2 = np.sqrt(v1**2 + (l2 * omega2) ** 2)
     potential = (m1 + m2) * g * y1 + m2 * g * y2
     kinetic = 0.5 * m1 * v1**2 + 0.5 * m2 * v2**2
     energy = kinetic + potential

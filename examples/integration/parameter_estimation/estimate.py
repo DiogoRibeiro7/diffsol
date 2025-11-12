@@ -1,47 +1,63 @@
 """
-Parameter estimation for a dynamical system using diffsol sensitivities.
+Parameter estimation for a dynamical system using diffsol forward sensitivities.
 """
+
+from __future__ import annotations
+
+import argparse
+from typing import Tuple
 
 import numpy as np
 import torch
 
-import diffsol_pytorch as dsp
+from diffsol_pytorch import DiffsolModule, testing
 
 DECAY_CODE = """
-state x
-param k
-der(x) = -k * x
+in = [k]
+k { 0.4 }
+u {
+    x = 1.0,
+}
+F {
+    -k * x,
+}
 """
 
 
-def synthetic_data(k_true=0.5, noise=0.01):
-    times = np.linspace(0.0, 2.0, 40)
-    signal = np.exp(-k_true * times)
-    noisy = signal + noise * np.random.randn(*signal.shape)
-    return times.tolist(), noisy
+def synthetic_data(k_true=0.4, noise=0.01) -> Tuple[np.ndarray, np.ndarray]:
+    times = np.linspace(0.0, 2.0, 80)
+    clean = np.exp(-k_true * times)
+    noisy = clean + noise * np.random.randn(times.size)
+    return times, noisy
 
 
-def loss_for_params(k, times, obs):
-    module = dsp.DiffsolModule(DECAY_CODE)
-    nout, nt, flat = module.solve_dense([k], times)
-    pred = np.array(flat, dtype=float)
-    return 0.5 * np.mean((pred - obs) ** 2)
-
-
-def estimate():
-    times, obs = synthetic_data()
-    k = torch.tensor([0.3], dtype=torch.float64, requires_grad=True)
-    optimizer = torch.optim.Adam([k], lr=1e-1)
-    for _ in range(50):
-        loss = loss_for_params(k.item(), times, obs)
+def estimate(times: np.ndarray, obs: np.ndarray, steps: int = 50):
+    module = DiffsolModule(DECAY_CODE)
+    params = torch.tensor([0.2], dtype=torch.float64, requires_grad=True)
+    optimizer = torch.optim.Adam([params], lr=5e-2)
+    for step in range(steps):
+        forward = testing.forward_mode(module, params.detach().tolist(), times.tolist())
+        pred = forward.solution[0]
+        residual = pred - obs
+        loss = 0.5 * float(np.mean(residual**2))
+        grad_sol = residual.reshape(1, -1) / residual.size
+        grads = np.einsum("pij,ij->p", forward.sensitivities, grad_sol)
         optimizer.zero_grad()
-        loss_tensor = torch.tensor(loss, dtype=k.dtype, requires_grad=True)
-        grad_out = [1.0] * len(times)
-        grads = dsp.reverse_mode(DECAY_CODE, [k.item()], times, grad_out)
-        k.grad = torch.tensor([grads[0]], dtype=k.dtype)
+        params.grad = torch.tensor(grads, dtype=params.dtype)
         optimizer.step()
-        print(f"k={k.item():.4f}, loss={loss:.6f}")
+        if step % 10 == 0 or step == steps - 1:
+            print(f"step={step:03d} k={params.item():.4f} loss={loss:.6f}")
+    return params.item()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--steps", type=int, default=60)
+    args = parser.parse_args()
+    times, obs = synthetic_data()
+    k_hat = estimate(times, obs, steps=args.steps)
+    print(f"estimated decay constant: {k_hat:.4f}")
 
 
 if __name__ == "__main__":
-    estimate()
+    main()

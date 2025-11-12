@@ -22,3 +22,4 @@ mathjax3_config = {
     "tex": {"macros": {"d": r"\\mathrm{d}"}},
 }
 nb_execution_mode = "off"
+autodoc_mock_imports = ["diffsol_pytorch", "diffsol_pytorch.diffsol_pytorch"]

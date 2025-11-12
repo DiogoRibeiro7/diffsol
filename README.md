@@ -47,6 +47,30 @@ All solvers feature:
 - Forward sensitivity analysis, calculating the gradient of an output function or the solver states $y$ with respect to the parameters $p$.
 - Adjoint sensitivity analysis, calculating the gradient of cost function $G(p)$ with respect to the parameters $p$. The cost function can be the integral of a continuous output function $g(t, y, p)$ or a sum of a set of discrete functions $h_i(t_i, y_i, p)$ at time points $t_i$.
 
+## Documentation & Community
+
+- [`docs/user-guide.rst`](docs/user-guide.rst) – installation, migration from ``torchdiffeq``, logging/troubleshooting tips.
+- [`docs/scientific-examples.rst`](docs/scientific-examples.rst) – neural ODEs, CNFs, PINNs, parameter estimation walkthroughs.
+- [`docs/release-strategy.rst`](docs/release-strategy.rst) – semantic versioning, compatibility matrix, deprecation policy.
+- [`docs/community.rst`](docs/community.rst) – discussions, chat, maintainer guidelines.
+- [`docs/ecosystem.rst`](docs/ecosystem.rst) – integration plans for JAX/TensorFlow, cloud deployments, container guidance.
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) and open issues using the templates under `.github/ISSUE_TEMPLATE`. Join the discussion at <https://github.com/martinjrobins/diffsol/discussions>.
+
+## Validation & Benchmarks
+
+- `bindings/diffsol-pytorch/tests/test_gradients.py` now exercises finite differences, analytic checks, and forward/reverse-mode autodiff (skipped automatically when the build lacks LLVM/Enzyme support).
+- `bindings/diffsol-pytorch/tests/test_scientific_validation.py` runs quick regression tests on Lorenz, Van der Pol, Hamiltonian mechanics, and DAE examples to ensure numerics stay within expected envelopes.
+- `benchmarks/perf.py` produces Markdown summaries comparing diffsol against `torchdiffeq` (when installed) for non‑stiff vs stiff dynamics and a neural ODE block, including memory usage samples and gradient diagnostics.
+- `benchmarks/gpu_validation.py` reports CPU vs CUDA timing/memory for a micro-problem so regressions are easy to spot.
+
+Example usage:
+
+```bash
+.\.venv\Scripts\python.exe -m pytest bindings/diffsol-pytorch/tests
+.\.venv\Scripts\python.exe benchmarks\perf.py
+```
+
 ## Wanted - Developers for higher-level language wrappers
 
 Diffsol is designed to be easy to use from higher-level languages like Python or R. I'd prefer not to split my focus away from the core library, so I'm looking for developers who would like to lead the development of these wrappers. If you're interested, please get in touch.

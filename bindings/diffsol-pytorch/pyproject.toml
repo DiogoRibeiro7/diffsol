@@ -31,3 +31,4 @@ docs = ["sphinx", "myst-nb", "sphinx-autodoc-typehints"]
 features = ["python"]
 module-name = "diffsol_pytorch.diffsol_pytorch"
 strip = true
+python-source = "python"

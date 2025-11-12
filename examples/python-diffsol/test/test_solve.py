@@ -20,6 +20,7 @@ class TestStringMethods(unittest.TestCase):
         y = model.solve(np.array([r, k]), times)
         soln = k / (1.0 + (k - y0) * np.exp(-r * times) / y0)
         np.testing.assert_allclose(y[0], soln, rtol=1e-5)
-        
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     unittest.main()

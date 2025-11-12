@@ -9,11 +9,16 @@ import torch.optim as optim
 import diffsol_pytorch as dsp
 
 WAVE_CODE = """
-state u
-state v
-param c
-der(u) = v
-der(v) = c * c * u
+in = [c]
+c { 1.0 }
+u {
+    u = 0.0,
+    v = 1.0,
+}
+F {
+    v,
+    c * c * u,
+}
 """
 
 
