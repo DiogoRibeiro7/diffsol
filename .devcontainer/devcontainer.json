@@ -1,0 +1,23 @@
+{
+  "name": "diffsol-dev",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21"
+    }
+  },
+  "postCreateCommand": "pip install --upgrade poetry && poetry config virtualenvs.in-project true",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "timonwong.shellcheck",
+        "rust-lang.rust-analyzer"
+      ]
+    }
+  }
+}

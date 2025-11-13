@@ -2,33 +2,54 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+env:
+  CARGO_TERM_COLOR: always
+  LLVM_VERSION: "18.1.8"
+  PYTEST_ADDOPTS: "--cov=diffsol_pytorch --cov-report=term-missing --cov-report=xml --cov-append --junitxml=pytest-report.xml"
 
 jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Restore LLVM toolchain cache
+        id: rust-llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}
+      - name: Fetch LLVM toolchain
+        if: steps.rust-llvm-cache.outputs.cache-hit != 'true'
+        run: python tools/prepare_toolchain.py fetch --version ${{ env.LLVM_VERSION }} --install-dir .deps --export-prefix
+      - name: Export LLVM prefix (Unix)
+        if: runner.os != 'Windows'
+        run: echo "LLVM_SYS_181_PREFIX=$(ls -d ${{ github.workspace }}/.deps/clang+llvm-${{ env.LLVM_VERSION }}-*)" >> "$GITHUB_ENV"
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
           components: rustfmt, clippy
-      - name: Cargo fmt
+      - name: Format check
         run: cargo fmt --all -- --check
-      - name: Cargo clippy
+      - name: Clippy
         run: cargo clippy -p diffsol-pytorch -- -D warnings
-      - name: Cargo test
+      - name: Cargo tests
         run: cargo test -p diffsol-pytorch
 
   python:
+    needs: rust
     strategy:
       fail-fast: false
       matrix:
@@ -41,33 +62,112 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
-      - name: Install deps
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('docs/requirements.txt', 'bindings/diffsol-pytorch/pyproject.toml') }}
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: py-cargo-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('Cargo.lock') }}
+      - name: Restore LLVM toolchain cache
+        id: py-llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}
+      - name: Fetch LLVM toolchain
+        if: steps.py-llvm-cache.outputs.cache-hit != 'true'
+        run: python tools/prepare_toolchain.py fetch --version ${{ env.LLVM_VERSION }} --install-dir .deps --export-prefix
+      - name: Export LLVM prefix (Unix)
+        if: runner.os != 'Windows'
+        run: echo "LLVM_SYS_181_PREFIX=$(ls -d ${{ github.workspace }}/.deps/clang+llvm-${{ env.LLVM_VERSION }}-*)" >> "$GITHUB_ENV"
+      - name: Export LLVM prefix (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $prefix = Get-ChildItem "$env:GITHUB_WORKSPACE/.deps" -Filter "clang+llvm-${{ env.LLVM_VERSION }}*" | Select-Object -First 1
+          if (-not $prefix) { throw "LLVM toolchain missing" }
+          Add-Content $env:GITHUB_ENV "LLVM_SYS_181_PREFIX=$($prefix.FullName)"
+      - name: Validate toolchain
+        run: python tools/prepare_toolchain.py check
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install maturin pytest torch==${{ matrix.torch-version }} --extra-index-url https://download.pytorch.org/whl/cpu
+          python -m pip install maturin pytest pytest-cov pytest-benchmark psutil torchdiffeq torch==${{ matrix.torch-version }} --extra-index-url https://download.pytorch.org/whl/cpu
       - name: Build extension
+        run: maturin develop --manifest-path bindings/diffsol-pytorch/Cargo.toml --features python
+      - name: Run validation suite
+        if: ${{ !(matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' && matrix.torch-version == '2.1') }}
+        run: python scripts/run_validation.py
+      - name: Run validation suite (perf + benchmarks)
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' && matrix.torch-version == '2.1' }}
+        run: python scripts/run_validation.py --perf --perf-json benchmark-results.json
+      - name: Ensure artifact placeholders exist
+        if: always()
+        shell: python
         run: |
-          maturin develop --manifest-path bindings/diffsol-pytorch/Cargo.toml --features python
-      - name: Run tests
-        run: |
-          pytest bindings/diffsol-pytorch/tests
+          import pathlib
+          for name in ("pytest-report.xml", "coverage.xml"):
+              path = pathlib.Path(name)
+              if not path.exists():
+                  path.touch()
+      - name: Upload pytest report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-${{ matrix.os }}-py${{ matrix.python-version }}-torch${{ matrix.torch-version }}
+          path: pytest-report.xml
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}-py${{ matrix.python-version }}-torch${{ matrix.torch-version }}
+          path: coverage.xml
+      - name: Upload benchmarks
+        if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' && matrix.torch-version == '2.1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-benchmarks
+          path: benchmark-results.json
 
   docs:
+    needs: python
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: docs-pip-${{ hashFiles('docs/requirements.txt') }}
+      - name: Restore LLVM toolchain cache
+        id: docs-llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}
+      - name: Fetch LLVM toolchain
+        if: steps.docs-llvm-cache.outputs.cache-hit != 'true'
+        run: python tools/prepare_toolchain.py fetch --version ${{ env.LLVM_VERSION }} --install-dir .deps --export-prefix
+      - name: Export LLVM prefix (Unix)
+        run: echo "LLVM_SYS_181_PREFIX=$(ls -d ${{ github.workspace }}/.deps/clang+llvm-${{ env.LLVM_VERSION }}-*)" >> "$GITHUB_ENV"
       - name: Install docs deps
         run: |
-          pip install -r docs/requirements.txt
-          pip install maturin torch --extra-index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt maturin torch --extra-index-url https://download.pytorch.org/whl/cpu
           maturin develop --manifest-path bindings/diffsol-pytorch/Cargo.toml --features python
       - name: Build docs
         working-directory: docs
@@ -81,6 +181,10 @@ jobs:
     needs: docs
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -88,3 +192,38 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  leakcheck:
+    needs: python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind libjemalloc-dev
+      - name: Restore LLVM toolchain cache
+        id: leak-llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}
+      - name: Fetch LLVM toolchain
+        if: steps.leak-llvm-cache.outputs.cache-hit != 'true'
+        run: python tools/prepare_toolchain.py fetch --version ${{ env.LLVM_VERSION }} --install-dir .deps --export-prefix
+      - name: Export LLVM prefix
+        run: echo "LLVM_SYS_181_PREFIX=$(ls -d ${{ github.workspace }}/.deps/clang+llvm-${{ env.LLVM_VERSION }}-*)" >> "$GITHUB_ENV"
+      - name: Fetch toolchain metadata
+        run: python tools/prepare_toolchain.py check
+      - name: Rust leak guards
+        run: cargo test -p diffsol-pytorch --features diagnostics --test memory_stress
+      - name: Valgrind harness
+        run: |
+          MALLOC_CONF="background_thread:true,prof:true" bash scripts/leakcheck.sh

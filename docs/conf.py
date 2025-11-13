@@ -3,6 +3,7 @@ import sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.abspath("../bindings/diffsol-pytorch"))
+sys.path.insert(0, os.path.abspath("./notebooks"))
 
 project = "diffsol-pytorch"
 author = "Diffsol Contributors"
@@ -21,5 +22,7 @@ html_theme = "furo"
 mathjax3_config = {
     "tex": {"macros": {"d": r"\\mathrm{d}"}},
 }
-nb_execution_mode = "off"
+nb_execution_mode = "auto"
+nb_execution_timeout = 120
+nb_execution_allow_errors = False
 autodoc_mock_imports = ["diffsol_pytorch", "diffsol_pytorch.diffsol_pytorch"]

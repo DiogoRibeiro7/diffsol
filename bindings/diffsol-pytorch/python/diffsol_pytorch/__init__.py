@@ -30,11 +30,13 @@ def enable_logging(level: str = "info") -> None:
     _init_logging(level)
 
 
+from . import device  # noqa: E402
 from . import testing  # noqa: E402  (depends on _ffi being imported first)
 
 __all__ = [
     "DiffsolModule",
     "reverse_mode",
     "enable_logging",
+    "device",
     "testing",
 ]

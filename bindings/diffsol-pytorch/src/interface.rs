@@ -3,8 +3,8 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use diffsol::{
-    error::DiffsolError, NalgebraContext, NalgebraLU, NalgebraMat, NalgebraVec, NonLinearOp,
-    OdeBuilder, OdeEquations, OdeSolverMethod, OdeSolverProblem, Op, Vector, VectorHost,
+    NalgebraContext, NalgebraLU, NalgebraMat, NalgebraVec, NonLinearOp, OdeBuilder, OdeEquations,
+    OdeSolverMethod, OdeSolverProblem, Op, Vector, VectorHost,
 };
 
 #[cfg(not(feature = "llvm"))]
@@ -18,7 +18,10 @@ pub(crate) type Context = NalgebraContext;
 pub(crate) type LinearSolver = NalgebraLU<f64>;
 pub(crate) type Equation = diffsol::DiffSl<StateMatrix, Codegen>;
 
-use crate::error::{TorchDiffsolError, TorchResult};
+use crate::{
+    error::{BuildStage, DiffsolResultExt, RuntimeStage, TorchDiffsolError, TorchResult},
+    memory::HostBuffer,
+};
 
 pub struct TorchDiffsol {
     problem: Arc<Mutex<OdeSolverProblem<Equation>>>,
@@ -33,8 +36,13 @@ impl Clone for TorchDiffsol {
 }
 
 impl TorchDiffsol {
-    pub fn from_diffsl(code: &str) -> Result<Self, DiffsolError> {
-        let problem = OdeBuilder::<StateMatrix>::new().build_from_diffsl(code)?;
+    pub fn from_diffsl(code: &str) -> TorchResult<Self> {
+        let problem = OdeBuilder::<StateMatrix>::new()
+            .build_from_diffsl(code)
+            .map_build(
+                BuildStage::ParseModule,
+                Some("Ensure the DiffSL module compiles with `diffsl` and enable `diffsl-llvm` for autodiff."),
+            )?;
         Ok(Self::from_problem(problem))
     }
 
@@ -50,16 +58,21 @@ impl TorchDiffsol {
         times: &[f64],
     ) -> TorchResult<(usize, usize, Vec<f64>)> {
         if times.is_empty() {
-            return Err(TorchDiffsolError::Shape(
-                "time grid must contain at least one point".to_string(),
-            ));
+            return Err(TorchDiffsolError::shape(
+                "at least one requested time",
+                "received 0 points",
+            )
+            .with_suggestion("Provide a non-empty array of evaluation times."));
         }
 
         let mut problem = self.problem.lock();
         let ctx = problem.eqn.context().clone();
         let params_v = StateVector::from_slice(params, ctx.clone());
         problem.eqn.set_params(&params_v);
-        let mut solver = problem.bdf::<LinearSolver>()?;
+        let mut solver = problem.bdf::<LinearSolver>().map_runtime(
+            RuntimeStage::SolverSetup,
+            Some("Verify the problem definition and initial state are consistent."),
+        )?;
 
         let nout = if let Some(out) = problem.eqn.out() {
             out.nout()
@@ -67,12 +80,18 @@ impl TorchDiffsol {
             problem.eqn.nstates()
         };
 
-        let mut buffer = vec![0f64; nout * times.len()];
+        let mut buffer = HostBuffer::zeros(nout * times.len());
         for (i, &t) in times.iter().enumerate() {
             while solver.state().t < t {
-                solver.step()?;
+                solver.step().map_runtime(
+                    RuntimeStage::SolveDense,
+                    Some("Consider loosening tolerances or reviewing event functions."),
+                )?;
             }
-            let y = solver.interpolate(t)?;
+            let y = solver.interpolate(t).map_runtime(
+                RuntimeStage::EvaluateOutput,
+                Some("Check that requested times lie within the integration window."),
+            )?;
             let out = if let Some(eval) = problem.eqn.out() {
                 eval.call(&y, t)
             } else {
@@ -83,7 +102,7 @@ impl TorchDiffsol {
         }
         drop(problem);
 
-        Ok((nout, times.len(), buffer))
+        Ok((nout, times.len(), buffer.into_vec()))
     }
 
     pub(crate) fn with_problem<F, R>(&self, f: F) -> TorchResult<R>

@@ -7,6 +7,8 @@ from diffsol_pytorch import DiffsolModule, reverse_mode, testing
 
 from conftest import AD_SKIP_REASON, HAS_AUTODIFF
 
+pytestmark = pytest.mark.gradient
+
 
 LOGISTIC_CODE = """
 in = [k]

@@ -3,24 +3,49 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Sequence, Tuple
+from typing import Any, Callable, Dict, Sequence, Tuple, TYPE_CHECKING, Protocol, cast
 
 import numpy as np
 
-from . import DiffsolModule as _NativeModule
+from . import DiffsolModule as _DiffsolModuleRuntime
 from . import reverse_mode as _reverse_mode
+
+if TYPE_CHECKING:
+    class _NativeModuleType(Protocol):
+        def solve_dense(
+            self, params: Sequence[float], times: Sequence[float]
+        ) -> Tuple[int, int, Sequence[float]]:
+            ...
+
+        def forward_mode(
+            self, params: Sequence[float], times: Sequence[float]
+        ) -> Tuple[int, int, Sequence[float], int, int, int, Sequence[float]]:
+            ...
+
+    ModuleInput = _NativeModuleType | str
+else:
+    _NativeModuleType = Any
+    ModuleInput = Any
 
 LossFn = Callable[[np.ndarray], Tuple[float, np.ndarray]]
 
 
-def _ensure_module(code_or_module) -> _NativeModule:
-    if isinstance(code_or_module, _NativeModule):
+def _ensure_module(code_or_module: ModuleInput) -> _NativeModuleType:
+    """
+    Return a ``DiffsolModule`` for the given ``code_or_module``.
+
+    Parameters
+    ----------
+    code_or_module:
+        Either an existing ``DiffsolModule`` instance or a string containing DiffSL code.
+    """
+    if isinstance(code_or_module, _DiffsolModuleRuntime):
         return code_or_module
-    return _NativeModule(str(code_or_module))
+    return cast(_NativeModuleType, _DiffsolModuleRuntime(str(code_or_module)))
 
 
 def _solve(
-    module: _NativeModule, params: Sequence[float], times: Sequence[float]
+    module: _NativeModuleType, params: Sequence[float], times: Sequence[float]
 ) -> np.ndarray:
     nout, nt, flat = module.solve_dense(list(params), list(times))
     return np.array(flat, dtype=float).reshape(nout, nt)
@@ -32,7 +57,12 @@ class ForwardSensitivities:
     sensitivities: np.ndarray  # shape: (nparams, nout, nt)
 
 
-def forward_mode(module: _NativeModule, params, times) -> ForwardSensitivities:
+def forward_mode(
+    module: _NativeModuleType,
+    params: Sequence[float],
+    times: Sequence[float],
+) -> ForwardSensitivities:
+    """Return dense solutions plus stacked sensitivity matrices."""
     nout, nt, sol_flat, nsens, _, _, sens_flat = module.forward_mode(params, times)
     solution = np.array(sol_flat, dtype=float).reshape(nout, nt)
     if nsens == 0:
@@ -43,7 +73,7 @@ def forward_mode(module: _NativeModule, params, times) -> ForwardSensitivities:
 
 
 def finite_difference_gradients(
-    code_or_module,
+    code_or_module: ModuleInput,
     params: Sequence[float],
     times: Sequence[float],
     loss_fn: LossFn,
@@ -72,6 +102,7 @@ def reverse_mode_gradients(
     times: Sequence[float],
     grad_output: np.ndarray,
 ) -> np.ndarray:
+    """Run reverse-mode autodiff via the Rust extension and reshape the gradients."""
     grads = _reverse_mode(
         code, list(params), list(times), grad_output.reshape(-1).tolist()
     )
@@ -83,13 +114,18 @@ def check_gradients(
     params: Sequence[float],
     times: Sequence[float],
     loss_fn: LossFn,
-) -> dict:
+) -> Dict[str, np.ndarray]:
+    """
+    Compare finite-difference, forward-mode, and reverse-mode gradients for ``loss_fn``.
+
+    Returns a dictionary containing the dense solution alongside each gradient variant so
+    tests can assert agreement.
+    """
     module = _ensure_module(code)
     sol = _solve(module, params, times)
     _, grad_sol = loss_fn(sol)
-    grad_out = grad_sol
     fd, _ = finite_difference_gradients(module, params, times, loss_fn)
-    rev = reverse_mode_gradients(code, params, times, grad_out)
+    rev = reverse_mode_gradients(code, params, times, grad_sol)
     fwd = forward_mode(module, params, times)
     sens = fwd.sensitivities
     if sens.shape[0] != len(params):

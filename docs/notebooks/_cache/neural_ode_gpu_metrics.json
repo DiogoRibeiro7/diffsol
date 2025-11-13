@@ -1,0 +1,6 @@
+﻿{
+  "device": "CUDA (sample)",
+  "batch_latency_ms": 1.42,
+  "batch_size": 32,
+  "note": "Seeded example metrics; run on a GPU notebook kernel to refresh."
+}

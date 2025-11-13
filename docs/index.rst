@@ -4,9 +4,14 @@ diffsol-pytorch
 .. toctree::
    :maxdepth: 2
 
+   install
    user-guide
    getting-started
    scientific-examples
+   performance
+   architecture
+   migration
+   troubleshooting
    api
    benchmarks
    ecosystem

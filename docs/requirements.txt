@@ -2,5 +2,8 @@ sphinx>=7.1
 myst-nb>=0.17
 sphinx-autodoc-typehints>=1.23
 furo>=2024.1.29
+ipykernel>=6.29
+matplotlib>=3.8
+nbmake>=1.5
 numpy
 torch>=1.11

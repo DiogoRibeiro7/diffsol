@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "pip"
+    directory: "/docs"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "pip"
+    directory: "/bindings/diffsol-pytorch/python"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

@@ -5,6 +5,8 @@ from diffsol_pytorch import DiffsolModule, testing
 
 from conftest import AD_SKIP_REASON, HAS_AUTODIFF
 
+pytestmark = pytest.mark.integration
+
 VAN_DER_POL_CODE = """
 in = [mu]
 mu { 5.0 }

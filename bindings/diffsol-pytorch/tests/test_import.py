@@ -7,6 +7,8 @@ import diffsol_pytorch as dsp
 
 from conftest import AD_SKIP_REASON, HAS_AUTODIFF
 
+pytestmark = pytest.mark.unit
+
 CODE = """
 in = [k]
 k { 0.4 }
@@ -33,6 +35,7 @@ def test_solve_dense_matches_analytic():
     assert torch.allclose(result, expected, atol=1e-6)
 
 
+@pytest.mark.gradient
 @pytest.mark.skipif(not HAS_AUTODIFF, reason=AD_SKIP_REASON)
 def test_reverse_mode_matches_closed_form_gradient():
     params = torch.tensor([0.7], dtype=torch.float64)

@@ -1,0 +1,70 @@
+name: Performance
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+env:
+  LLVM_VERSION: "18.1.8"
+
+jobs:
+  perf-benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: perf-pip-${{ hashFiles('docs/requirements.txt', 'bindings/diffsol-pytorch/pyproject.toml') }}
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: perf-cargo-${{ hashFiles('Cargo.lock') }}
+      - name: Restore LLVM toolchain cache
+        id: perf-llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: llvm-${{ runner.os }}-${{ env.LLVM_VERSION }}
+      - name: Fetch LLVM toolchain
+        if: steps.perf-llvm-cache.outputs.cache-hit != 'true'
+        run: python tools/prepare_toolchain.py fetch --version ${{ env.LLVM_VERSION }} --install-dir .deps --export-prefix
+      - name: Export LLVM prefix
+        run: echo "LLVM_SYS_181_PREFIX=$(ls -d ${{ github.workspace }}/.deps/clang+llvm-${{ env.LLVM_VERSION }}-*)" >> "$GITHUB_ENV"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install maturin pytest pytest-benchmark torch torchdiffeq psutil --extra-index-url https://download.pytorch.org/whl/cpu
+          maturin develop --manifest-path bindings/diffsol-pytorch/Cargo.toml --features python
+      - name: Run performance suite
+        run: python scripts/run_validation.py --perf --perf-json benchmark-results.json
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-benchmarks
+          path: benchmark-results.json
+      - name: Track regression history
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: diffsol-nightly
+          tool: "pytest"
+          output-file-path: benchmark-results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          gh-pages-branch: benchmarks
+          alert-threshold: "150%"
+          comment-on-alert: true
+          fail-on-alert: true

@@ -1,0 +1,6 @@
+﻿{
+  "device": "CUDA (sample)",
+  "loss_after_50_steps": 0.71,
+  "batch_size": 64,
+  "note": "Cached CNF metrics populated on CPU-only runs."
+}

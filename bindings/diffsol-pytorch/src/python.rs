@@ -19,8 +19,7 @@ pub struct PyTorchDiffsol {
 impl PyTorchDiffsol {
     #[new]
     fn new(code: &str) -> PyResult<Self> {
-        let inner = TorchDiffsol::from_diffsl(code)
-            .map_err(|err| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(err.to_string()))?;
+        let inner = TorchDiffsol::from_diffsl(code).map_err(PyErr::from)?;
         Ok(Self { inner })
     }
 
@@ -32,7 +31,7 @@ impl PyTorchDiffsol {
         let (nout, nt, data) = self
             .inner
             .solve_dense(&params, &times)
-            .map_err(|err| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(err.to_string()))?;
+            .map_err(PyErr::from)?;
         log::info!(
             "solve_dense completed (params={}, times={}, nout={}, nt={})",
             params.len(),
@@ -57,8 +56,7 @@ impl PyTorchDiffsol {
         let ForwardModeResult {
             solution,
             sensitivities,
-        } = autograd::solve_forward_mode(&self.inner, &params, &times)
-            .map_err(|err| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(err.to_string()))?;
+        } = autograd::solve_forward_mode(&self.inner, &params, &times).map_err(PyErr::from)?;
         let (nsens, sens_rows, sens_cols, sens_data) = sensitivities;
         log::info!(
             "forward_mode completed (params={}, times={}, sensitivities={})",
@@ -86,33 +84,20 @@ fn reverse_mode(
     times: Vec<f64>,
     grad_output: Vec<f64>,
 ) -> PyResult<Vec<f64>> {
-    let module = TorchDiffsol::from_diffsl(code)
-        .map_err(|err| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(err.to_string()))?;
-    if times.is_empty() {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "time grid must be non-empty",
-        ));
-    }
-    let ncols = times.len();
-    if grad_output.len() % ncols != 0 {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "gradient output length must be a multiple of len(times)",
-        ));
-    }
-    let nrows = grad_output.len() / ncols;
+    let module = TorchDiffsol::from_diffsl(code).map_err(PyErr::from)?;
     let ReverseModeResult {
         grad_params,
         grad_initial_state,
-    } = autograd::solve_reverse_mode(&module, &params, &times, &grad_output, nrows)
-        .map_err(|err| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(err.to_string()))?;
+    } = autograd::solve_reverse_mode(&module, &params, &times, &grad_output)
+        .map_err(PyErr::from)?;
     let mut data = grad_params;
     let mut init = grad_initial_state;
     data.append(&mut init);
     log::info!(
-        "reverse_mode completed (params={}, times={}, grad_rows={})",
+        "reverse_mode completed (params={}, times={}, grad_params={})",
         params.len(),
         times.len(),
-        nrows
+        data.len()
     );
     Ok(data)
 }
